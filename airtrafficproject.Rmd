@@ -1,0 +1,143 @@
+---
+title: "AirTrafficProject"
+output: html_document
+date: "2025-05-29"
+---
+
+```{r}
+library(fpp)
+library(fpp2)
+library(TTR)
+library(readr)
+
+air <- read_csv("~/Downloads/airtraffic.csv")
+Air_Raw <- air$Flt
+Air_ts <- ts(Air_Raw, frequency = 12, start = c(2003,1))
+plot(Air_ts)
+Air_ts
+#Shows the number of flights monthly from 2003 to 2023. Sharp drop in 2020 due to COVID.
+air_win <- window(Air_ts, start = c(2021,6))
+#Will use a window starting from June 2021, since that is where the air traffic returned to normal from COVID.
+plot(air_win)
+Acf(air_win)
+#Acf shows no strong trend in the data.
+
+summary(air_win)
+boxplot(air_win)
+#Average number of flights in the US monthly is 692623. The maximum amount in any month is 768619.
+
+decompose <- decompose(air_win)
+plot(decompose)
+decompose
+#Time series is additive.
+#The number of flights is lowest in November, December, January, and February. It is highest in May, June, July, and August. Therefore, this data is seasonal. The number of flights is higher in the summer months because the weather is warmer and people tend to take off work and travel. The total flights are lower in the winter months since the weather is cold and there are also a lot of holidays. People tend to stay home with their family during the holidays.
+
+plot(air_win)
+seasonadj_air <- seasadj(decompose)
+lines(seasonadj_air, col = "blue")
+#There are some large fluctuations between the time series and the seasonally adjusted plot. This means the seasonal fluctuations are very large in the data.
+
+#Naive Method
+naive_forecast <- naive(air_win, 12)
+plot(naive_forecast)
+res_air <- naive_forecast$residuals
+plot(res_air)
+#Naive forecast predicts a constant number for the next year.
+#Plot of residuals shows large fluctuating errors, but no trend over time.
+hist(res_air)
+#Most of the residuals occur between the values of -50,000 and 50,000. There a lot of large errors for the naive model.
+plot(as.numeric(naive_forecast$fitted), as.numeric(res_air))
+plot(as.numeric(naive_forecast$x), as.numeric(res_air))
+#Both the fitted and actual forecast do not have any correlation with the residuals.
+Acf(res_air)
+#No trend in reisudals as there are only two lines above the line of significance at lag 6 and 12.
+accuracy(naive_forecast)
+#MAPE is 4.3846 which is high.
+plot(naive_forecast)
+naive_forecast
+#Overall, not the best. Predicts 713549 flights for every month of the next year.
+
+#Simple Smoothing
+ets_air <- ets(air_win)
+ets_forecast <- forecast(ets_air, h=12)
+plot(ets_forecast)
+ets_air
+#Forecasts a straight line for the next 12 months.
+res_ets <- ets_forecast$residuals
+plot(res_ets)
+#Residuals do not show trend with time.
+hist(res_ets)
+#Most errors are around 0, but a lot are also around -50,000.
+plot(as.numeric(ets_forecast$fitted), as.numeric(res_ets))
+plot(as.numeric(ets_forecast$x), as.numeric(res_ets))
+#Residuals points are scattered in both plots. No visible trend between the fitted/actuals plots and the residuals.
+Acf(res_ets)
+#Only significant lines at lag 6 and 12. No trend in residuals.
+accuracy(ets_forecast)
+plot(ets_forecast)
+ets_forecast
+
+#HoltWinters
+HW_air <- HoltWinters(air_win)
+HW_forecast <- forecast(HW_air, h=12)
+plot(HW_forecast)
+HW_forecast
+res_HW <- HW_forecast$residuals
+plot(res_HW)
+#Some large errors around 2023.
+hist(res_HW)
+#Most errors are concentrated between -10,000 and 10,000.
+plot(as.numeric(HW_forecast$fitted), as.numeric(res_HW))
+plot(as.numeric(HW_forecast$x), as.numeric(res_HW))
+#No correlation between the residuals and fitted/actual forecasts. Generally concentrated around 0 except for a few outliers.
+Acf(res_HW)
+#No trend in residuals.
+accuracy(HW_forecast)
+#Very low MAPE at 1.33. RMSE is also 11617.68, which is much lower than the other forecasts so far.
+plot(HW_forecast)
+HW_forecast
+#Forecast follows the seasonal trends of air traffic in the US. Definitely the best so far.
+
+#ARIMA
+Pacf(air_win)
+#Must difference because Pacf has one significiant point at lag 1 and immediately drops off.
+ndiffs(air_win)
+#There is 1 difference needed to make it stationary.
+tsdisplay(air_win)
+air_windiff1 <- diff(air_win, differences=1)
+plot(air_windiff1)
+tsdisplay(air_windiff1)
+auto_fit <- auto.arima(air_win, trace=TRUE, stepwise = FALSE)
+Acf(air_windiff1)
+Pacf(air_windiff1)
+#Best ARIMA model is ARIMA(0,0,1)(0,1,0)[12] with drift. Drift indicates a slight increasing trend of total flights. The model says the time series is seasonal and there is one seasonal difference being used.
+auto_fit
+attributes(auto_fit)
+plot(forecast(auto_fit,h=5,level=c(80)))
+#This model has the lowest BIC of 354.63.
+#Shows there is an 80% chance the actual value lies in the forecast range.
+res_arima <- auto_fit$residuals
+plot(res_arima)
+Acf(res_arima)
+hist(res_arima)
+plot(as.numeric(auto_fit$fitted), as.numeric(res_arima))
+plot(as.numeric(auto_fit$x), as.numeric(res_arima))
+#Most errors are between 0 and 10,000 which are smaller errors for this data.
+#No trend in residuals as shown in ACF.
+#Most residuals are concentrated around 0 for both actual and fitted forecasts, with the exception of a few outliers.
+accuracy(auto_fit)
+arima_forecast <- forecast(auto_fit, h=12)
+plot(arima_forecast)
+arima_forecast
+#Forecast follows the seasonal trends of the past while expecting the total flights to slightly increase with time (drift).
+#MAPE is 0.8080238, which is the lowest out of all the forecasts. RMSE is 9025.336 which is also the lowest of all the forecasts.
+#ARIMA looks like the best forecast.
+
+#Conclusion
+#The ARIMA(0,0,1)(0,1,0)[12] with drift model is the best forecast to use to predict the total flights in the US over the next year. The ARIMA follows the seasonal trend of an increase in flights in the summer months, and a sharp decrease in the winter months. It accounts for an expected increase in total flights, due to more planes being built and more people wanting to fly places over time. 
+#These seasonal fluctuations occur because people tend to go on vacations and travel in the summer when the weather is warm. Kids are out of school in the summer so it gives families an opportunity to travel places. In the winter, the weather is cold and most people are working or in school. Also, there are many holidays in the fall/winter, so people tend to stay home and be with their family.
+#The ARIMA model had the lowest MAPE at 0.8080238, and the lowest RMSE 9025.336, indicating it had the smallest errors of all the forecast. There were no trend in the residuals, and when plotting the forecast vs the residuals, the errors were all concentrated around 0. The histogram of the residuals showed the vast majority of the errors to be within in -10,000 and 10,000 which is small for this data set. These accuracy measures all contributed to choosing ARIMA as the best model for predicting the total flights in the US over the next year.
+#Insights
+#Airline companies should have more planes and pilots on staff for the summer months, as there will be an increased amount of flights being booked during this time. Airports can also prepare for this by having more air traffic control workers during the summer, as well as more restaurants open for the larger crowds. In the winter, airline companies can limit the amount of planes being flown to limit mileage and fuel costs.
+
+```
